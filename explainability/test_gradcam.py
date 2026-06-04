@@ -1,0 +1,1 @@
+cam = gradcam.generate(x)
