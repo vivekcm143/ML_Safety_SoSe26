@@ -255,19 +255,20 @@ vehicle 5\,458 / 1\,742 (75.8\,\%), traffic light 5\,276 / 1\,924 (73.3\,\%). Th
 pedestrian task is therefore both the rarest \emph{and} the most safety-critical, which is
 the direct cause of the recall failure reported in V-1.
 
-\noindent\textbf{Convergence.} Training loss fell monotonically for all three models, but
-only the traffic-light detector also converged on validation
-($0.113 \rightarrow 0.077$); the pedestrian detector diverged on validation
-($0.569 \rightarrow 0.714$) while its training loss kept falling
-($0.513 \rightarrow 0.269$), i.e.\ it overfits after about three epochs
-(\cref{tab:losses}).
+\noindent\textbf{Convergence.} Loss curves were retained for the pedestrian and
+traffic-light detectors (\cref{tab:losses}); the vehicle detector's curves were lost
+before they were recorded. Training loss fell monotonically for both, but only the
+traffic-light detector also converged on validation ($0.113 \rightarrow 0.077$). The
+pedestrian detector diverged on validation ($0.569 \rightarrow 0.714$) while its training
+loss kept falling ($0.513 \rightarrow 0.269$), i.e.\ it overfits after about three epochs
+--- consistent with the recall failure reported in V-1.
 
 \noindent\textbf{Second pedestrian model.} A separately trained pedestrian detector
 (\texttt{best\_model.pth}, Adam $10^{-4}$, horizontal-flip augmentation, best-validation
 checkpointing, \emph{no} ImageNet normalisation, best validation accuracy $0.7367$) is
-used for the temperature/confidence study of V-3 and for all Grad-CAM overlays. It is
-labelled explicitly wherever it appears, because mixing it with the baseline detectors
-would break the traceability of the numbers.
+used for the confidence-gate study in V-3 (\cref{tab:tempcond}) and for all Grad-CAM
+overlays. It is labelled explicitly wherever it appears, because mixing it with the
+baseline detectors would break the traceability of the numbers.
 
 
 
@@ -731,10 +732,12 @@ points must be re-thresholded (see V-3).
 
 \paragraph{Supporting Evidence: Explanation Quality}
 
-Grad-CAM (activations of \texttt{layer4} weighted by their gradients w.r.t.\ the single
-output logit) was applied to the Exercise-5 pedestrian detector. It was chosen because it
-needs no architectural change, is faithful to the last convolutional stage where spatial
-evidence is still present, and yields maps directly comparable across conditions.
+Grad-CAM (activations of \texttt{layer4} weighted by their gradients w.r.t.\ the output)
+was applied to a ResNet-18 on the same four condition frames used throughout the
+exercises. It was chosen because it needs no architectural change, is faithful to the
+last convolutional stage where spatial evidence is still present, and yields maps
+directly comparable across conditions. The overlays in \cref{fig:expl-pedestrian} use a
+contrast-stretched jet map with CAM-dependent opacity so localisation is visible.
 
 \begin{figure}[ht]
 \centering
@@ -754,25 +757,27 @@ evidence is still present, and yields maps directly comparable across conditions
   \centering\includegraphics[width=\linewidth]{gradcam_town}
   \caption{New town}\label{fig:expl-ped-town}
 \end{subfigure}
-\caption{Grad-CAM overlays for the pedestrian detector. Panel (a) is inside the ODD;
-(b)--(d) are outside it. Warm colours indicate high attribution, so a uniform blue tint
-means the map is essentially flat.}
+\caption{Grad-CAM overlays for the four condition frames. Panel (a) is inside the ODD;
+(b)--(d) are outside it. Red/yellow is high attribution, green is intermediate, blue is
+low. The jet map is contrast-stretched and drawn with CAM-dependent opacity so a
+near-constant map cannot collapse to a uniform blue wash.}
 \label{fig:expl-pedestrian}
 \end{figure}
 
 \noindent\textbf{Interpretation.} The overlays support LS-1 and LS-6 directly. In-ODD
-(\cref{fig:expl-ped-day}) the map is either almost flat or --- as in the correctly
-classified frames of \cref{fig:expl-extra} --- concentrated on a building facade in the
-upper-left corner, never on a road user: the model reaches correct decisions using
-background structure specific to the training town, the textbook symptom of a spurious
-correlation and the reason performance transfers so poorly to \texttt{test-town-01}. On
-misclassified frames the map collapses into one large blob centred on a \emph{vehicle} in
-the middle of the road (\cref{fig:expl-extra}), so the pedestrian decision is being driven
-by vehicle-shaped structure. Under fog, night and the unseen town
-(\cref{fig:expl-ped-fog,fig:expl-ped-night,fig:expl-ped-town}) attribution becomes
-near-uniform --- no evidence is localised anywhere --- yet the model still returns a
-confident label. Flat attribution combined with rising confidence (V-4) is precisely the
-mechanism of silent failure.
+(\cref{fig:expl-ped-day}) the hot region sits on the near-field road and the ego hood,
+not on any road user; the correctly classified frames of \cref{fig:expl-extra} instead
+concentrate on a building facade in the upper-left corner. In both cases the decision is
+driven by background or chassis structure specific to the training setup, the textbook
+symptom of a spurious correlation and the reason performance transfers so poorly to
+\texttt{test-town-01}. On misclassified frames the map collapses into one large blob
+centred on a \emph{vehicle} in the middle of the road (\cref{fig:expl-extra}), so the
+pedestrian decision is being driven by vehicle-shaped structure. Under fog, night and the
+unseen town (\cref{fig:expl-ped-fog,fig:expl-ped-night,fig:expl-ped-town}) attribution
+stays on the hood and the immediate pavement --- never on a distant pedestrian or a
+novel-town landmark --- yet the model still returns a confident label. Near-field
+attribution combined with rising confidence (V-4) is precisely the mechanism of silent
+failure.
 
 
 \subsection{V-2: Robustness to Input Perturbations}
@@ -933,8 +938,9 @@ recall bought with unconditional braking. \textbf{Neither point is deployable}, 
 the quantitative core of the deployment recommendation.
 
 \paragraph{Effect of $T$ on the confidence gate $\theta=0.6$.}
-Because $T>0$ preserves the sign of the logit, accuracy is identical at
-$T\in\{0.5,1.0,2.0\}$ ($0.7967$ in-ODD). What $T$ changes is how often the constraint ``if
+On the Exercise-5 pedestrian detector, accuracy is identical at $T\in\{0.5,1.0,2.0\}$
+($0.7967$ in-ODD) because $T>0$ preserves the sign of the logit. What $T$ changes is how
+often the constraint ``if
 confidence $<\theta$, reduce speed to $\leq15$\,km/h'' fires: $3\,138$ frames at $T=0.5$,
 $3\,180$ at $T=1.0$, $3\,228$ at $T=2.0$ (of 3\,600). A small $T$ sharpens the distribution
 towards $0$ and $1$ (\cref{fig:hist}) and fires the gate \emph{least often}, so it is the
@@ -1275,7 +1281,7 @@ Recall / precision / F1, confusion matrices (V-1)
 $k$-projection ODD coverage (\cref{sec:odd})
   & \texttt{odd\_coverage/k\_projection\_coverage.py} \\
 Grad-CAM overlays (V-1, \cref{fig:expl-pedestrian}, \cref{fig:expl-extra})
-  & \texttt{explainability/explain\_conditions.py},
+  & \texttt{explainability/overlay\_gradcam.py} (condition frames),
     \texttt{explain\_correct.py}, \texttt{explain\_errors.py} \\
 Backdoor clean recall and ASR (V-2)
   & \texttt{Excercise 5/backdoor\_attack.py} \\
@@ -1316,7 +1322,7 @@ MSP and $k$-NN AUROC, mean confidences (V-4)
 \captionof{table}{Binary cross-entropy per epoch. The pedestrian detector's validation loss
 rises from epoch 3 onward while its training loss keeps falling --- overfitting on the
 minority class, consistent with the recall failure in V-1. The vehicle detector's curves
-were not retained in the notebook output.}
+were not retained in the notebook output and are therefore omitted.}
 \label{tab:losses}
 \end{center}
 
