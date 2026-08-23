@@ -1,4 +1,4 @@
-\documentclass[nologo,a4paper,12pt]{article}
+\documentclass[a4paper,12pt]{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -740,22 +740,23 @@ evidence is still present, and yields maps directly comparable across conditions
 \centering
 \begin{subfigure}[t]{0.235\linewidth}
   \centering\includegraphics[width=\linewidth]{gradcam_day}
-  \caption{In-ODD (daytime)}\label{fig:expl-ped-day}
+  \caption{In-ODD}\label{fig:expl-ped-day}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.235\linewidth}
   \centering\includegraphics[width=\linewidth]{gradcam_fog}
-  \caption{Fog (OOD)}\label{fig:expl-ped-fog}
+  \caption{Fog}\label{fig:expl-ped-fog}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.235\linewidth}
   \centering\includegraphics[width=\linewidth]{gradcam_night}
-  \caption{Night (OOD)}\label{fig:expl-ped-night}
+  \caption{Night}\label{fig:expl-ped-night}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.235\linewidth}
   \centering\includegraphics[width=\linewidth]{gradcam_town}
-  \caption{Unseen town (OOD)}\label{fig:expl-ped-town}
+  \caption{New town}\label{fig:expl-ped-town}
 \end{subfigure}
-\caption{Grad-CAM overlays for the pedestrian detector across conditions. Warm colours
-indicate high attribution; a uniform blue tint means the map is essentially flat.}
+\caption{Grad-CAM overlays for the pedestrian detector. Panel (a) is inside the ODD;
+(b)--(d) are outside it. Warm colours indicate high attribution, so a uniform blue tint
+means the map is essentially flat.}
 \label{fig:expl-pedestrian}
 \end{figure}
 
@@ -1291,6 +1292,10 @@ MSP and $k$-NN AUROC, mean confidences (V-4)
   & \texttt{Excercise 7/7 Anomaly Detection.ipynb} \\
 \end{longtable}}
 
+% the uncaptioned longtables above silently step the table counter; restart the
+% numbering here so the three captioned tables read 1-3
+\setcounter{table}{0}
+
 \subsection{Training and validation loss per epoch}
 
 \begin{center}
@@ -1369,7 +1374,7 @@ unchanged; only the confidence-gate count moves.}
 
 \subsection{Predicted-probability distributions}
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
 \begin{subfigure}[t]{0.32\linewidth}
   \centering\includegraphics[width=\linewidth]{hist_test_T05}
@@ -1399,15 +1404,16 @@ unchanged; only the confidence-gate count moves.}
 \end{subfigure}
 \caption{Distribution of the predicted pedestrian probability $p_T$. Raising $T$ pulls mass
 away from the extremes towards the centre; lowering it sharpens the distribution towards
-$0$ and $1$ and therefore fires the $\theta=0.6$ confidence gate least often. The night and
-unseen-town splits carry visibly more mass above $0.6$ than the in-ODD split, i.e.\ the
-model is not less confident out of domain.}
+$0$ and $1$ and therefore fires the $\theta=0.6$ confidence gate least often. At $T=1.0$
+the number of frames \emph{above} $0.6$ is 420 in-ODD but 583 at night and 760 in the
+unseen town (\cref{tab:tempcond}), i.e.\ the detector is not less confident out of domain
+--- only under fog (224) does it become more cautious.}
 \label{fig:hist}
 \end{figure}
 
 \subsection{Grad-CAM on correct and misclassified in-ODD frames}
 
-\begin{figure}[ht]
+\begin{figure}[H]
 \centering
 \begin{subfigure}[t]{0.235\linewidth}
   \centering\includegraphics[width=\linewidth]{gradcam_correct_1}
