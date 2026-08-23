@@ -205,8 +205,12 @@ Class balance (positive / negative):
 Cost-sensitive decision on the pedestrian detector (`C_FN = 100`, `C_FP = 1`,
 `tau* = 1/101`): total loss 70 600 at `tau = 0.5` for both the uncalibrated and the
 temperature-scaled model, 3265 at `tau*` uncalibrated, and 2894 at `tau*` calibrated.
-The lowest-loss combination reaches recall 1.000 but flags 2894 of 3600 frames as
-pedestrian-positive, so it degenerates into near-permanent braking.
+The lowest-loss combination reaches recall 1.000, but degenerately: it predicts
+"pedestrian" on all 3600 frames (2894 false positives, zero true negatives, accuracy
+0.196), which is unconditional braking rather than detection. At `tau = 0.5` the
+detector predicts "no pedestrian" on all 3600 frames, so recall is 0.000 — and
+calibration cannot change that, because temperature scaling is monotone in the logit
+and never moves a decision taken at a fixed threshold.
 
 **Deployment recommendation: do not deploy.** See `report/safety_case_report.tex` for
 the full argument and the residual-risk analysis.

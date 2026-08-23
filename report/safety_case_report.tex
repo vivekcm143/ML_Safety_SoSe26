@@ -910,27 +910,27 @@ $L=C_{\text{FN}}\cdot\#\text{FN}+C_{\text{FP}}\cdot\#\text{FP}$ on the pedestria
 
 \begin{center}
 \small
-\begin{tabular}{@{}lcccc@{}}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
 \textbf{Pedestrian model} & $\boldsymbol{\tau=0.5}$ & $\boldsymbol{\tau=\tau^{*}}$ &
-\textbf{FP at $\tau^{*}$} & \textbf{Recall at $\tau^{*}$} \\
+\textbf{FP at $\tau^{*}$} & \textbf{TN at $\tau^{*}$} & \textbf{Recall at $\tau^{*}$} \\
 \midrule
-Uncalibrated ($T=1.0$)       & 70\,600 & 3\,265 & 2\,765 & 0.993 \\
-Temperature-scaled ($T=2.9$) & 70\,600 & \textbf{2\,894} & 2\,894 & 1.000 \\
+Uncalibrated ($T=1.0$)       & 70\,600 & 3\,265 & 2\,765 & 129 & 0.993 \\
+Temperature-scaled ($T=2.9$) & 70\,600 & \textbf{2\,894} & 2\,894 & 0 & 1.000 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent The lowest loss is calibrated $+$ $\tau^{*}$, a $24\times$ reduction from the
 default operating point --- but nearly all of the gain comes from moving the
-\emph{threshold}, not from calibrating: $3\,265 \rightarrow 2\,894$ is an $11\,\%$
-improvement, whereas $\tau=0.5$ costs $70\,600$ regardless of calibration. At $\tau=0.5$ the
-detector predicts ``no pedestrian'' on all 3\,600 frames (recall $0.000$), and calibration
-cannot rescue it because temperature scaling is monotone in the logit and so never changes
-a decision taken at a fixed threshold. The cost-optimal point does reach perfect recall,
-but it flags 2\,894 of 3\,600 frames as pedestrian-positive (accuracy $0.196$), degenerating
-into near-permanent braking. \textbf{Neither operating point is deployable}, which is the
-quantitative core of the deployment recommendation.
+\emph{threshold}, not from calibrating ($3\,265 \rightarrow 2\,894$ is $11\,\%$, whereas
+$\tau=0.5$ costs $70\,600$ either way). Both operating points are degenerate. At
+$\tau=0.5$ the detector predicts ``no pedestrian'' on all 3\,600 frames (recall $0.000$),
+and calibration cannot rescue it because temperature scaling is monotone in the logit and
+never moves a decision taken at a fixed threshold. At $\tau^{*}$ it predicts
+``pedestrian'' on all 3\,600 frames (zero true negatives, accuracy $0.196$): perfect
+recall bought with unconditional braking. \textbf{Neither point is deployable}, which is
+the quantitative core of the deployment recommendation.
 
 \paragraph{Effect of $T$ on the confidence gate $\theta=0.6$.}
 Because $T>0$ preserves the sign of the logit, accuracy is identical at
@@ -1195,7 +1195,7 @@ merely unverified but violated, a $10\times10$ pixel trigger flipping every
 pedestrian-positive frame (ASR $=1.00$) while clean-set metrics stay plausible. V-3 shows
 all three detectors overconfident beyond the ECE limit before and after temperature
 scaling, so no confidence-gated fallback can be trusted, and the cost-optimal threshold
-that restores recall to $1.000$ does so by braking on $80\,\%$ of frames. V-4 is only
+that restores recall to $1.000$ does so by braking on \emph{every} frame. V-4 is only
 partial, with MSP at $0.751$ and the pedestrian model growing \emph{more} confident on
 out-of-ODD input. V-5 cannot be discharged at all, because the only fallback is a human who
 shares the same single camera view, gets no auditory alert, and is in practice the primary
