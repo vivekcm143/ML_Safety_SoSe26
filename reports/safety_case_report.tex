@@ -1,0 +1,510 @@
+\documentclass[11pt,a4paper]{article}
+
+% ----------------------------------------------------------------------
+% Safety Case Report
+% Introduction to Machine Learning Safety (SoSe 2026)
+% Otto-von-Guericke University Magdeburg
+% ----------------------------------------------------------------------
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{graphicx}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tcolorbox}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{claimblue}{RGB}{30,75,140}
+\definecolor{warnred}{RGB}{170,30,30}
+\definecolor{lightgray}{RGB}{240,240,240}
+
+\titleformat{\section}{\large\bfseries\color{claimblue}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Safety Case Report}
+\rhead{\small CARLA Perception System}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Claim / evidence boxes -------------------------------------------------
+\newtcolorbox{claimbox}[1]{colback=lightgray,colframe=claimblue,
+  fonttitle=\bfseries,title=#1,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt}
+
+\newcommand{\claim}[2]{\vspace{2pt}\noindent\textbf{\color{claimblue}#1:} #2\par\vspace{2pt}}
+
+\begin{document}
+
+% ======================================================================
+% TITLE
+% ======================================================================
+\begin{titlepage}
+\centering
+\vspace*{1.5cm}
+{\Huge\bfseries Safety Case Report\par}
+\vspace{0.6cm}
+{\LARGE CARLA Autonomous-Driving Perception System\par}
+\vspace{0.4cm}
+{\large A Structured Safety Argument for a ResNet-18 Based\\ Pedestrian, Vehicle and Traffic-Light Detection Stack\par}
+\vspace{2.0cm}
+
+\begin{tabular}{rl}
+\textbf{Course:} & Introduction to Machine Learning Safety \\
+\textbf{Institution:} & Otto-von-Guericke University Magdeburg (OvGU) \\
+\textbf{Semester:} & Summer Term 2026 \\
+\textbf{Author:} & Vivek Chitradurga Mallikarjun \\
+\textbf{Document type:} & Assurance / Safety Case \\
+\textbf{Status:} & Draft for review \\
+\end{tabular}
+
+\vfill
+{\small This report presents a structured safety case for a machine-learning
+perception system. All quantitative evidence is drawn from the experimental
+exercises (training, evaluation, backdoor analysis, explainability,
+out-of-distribution detection, adversarial robustness and uncertainty
+calibration) performed on the CARLA dataset. The report is intended for
+educational purposes only and does not certify the system for real-world
+deployment.\par}
+\vspace{1cm}
+{\small \today}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ======================================================================
+\section{Executive Summary}
+% ======================================================================
+This document constructs a safety case for a camera-based perception system
+composed of three independent binary classifiers --- \emph{pedestrian
+detection}, \emph{vehicle detection} and \emph{traffic-light detection} ---
+each built on an ImageNet-pretrained ResNet-18 backbone and trained on images
+from the CARLA driving simulator.
+
+A safety case is a \emph{structured, evidence-supported argument} that a system
+is acceptably safe for a given use within a defined operating context. Following
+that principle, this report states an explicit top-level safety goal, decomposes
+it into verifiable sub-claims, and links each sub-claim to concrete evidence
+produced by the course exercises.
+
+\begin{tcolorbox}[colback=warnred!8,colframe=warnred,title=\bfseries Overall verdict]
+The evidence gathered does \textbf{not} support an unconditional claim of
+acceptable safety. The pedestrian classifier --- the most safety-critical
+component --- exhibits a test-set recall of only \textbf{0.19}, all three
+models are severely \textbf{over-confident}, and the system is vulnerable to
+distribution shift, backdoor poisoning and adversarial perturbation. The system
+must therefore be regarded as \textbf{not fit for deployment} in its current
+form. Section~\ref{sec:recommendations} lists the conditions that would have to
+be met before deployment could be reconsidered.
+\end{tcolorbox}
+
+% ======================================================================
+\section{System Description and Operational Design Domain}
+% ======================================================================
+\subsection{System under assessment}
+The item under assessment is the perception front-end of a CARLA autonomous
+driving stack. It ingests front-facing RGB camera frames and produces three
+independent binary decisions:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Model} & \textbf{Output} & \textbf{Backbone} \\
+\midrule
+Pedestrian detector    & \texttt{has\_pedestrian} $\in \{0,1\}$    & ResNet-18 (ImageNet-pretrained) \\
+Vehicle detector       & \texttt{has\_vehicle} $\in \{0,1\}$       & ResNet-18 (ImageNet-pretrained) \\
+Traffic-light detector & \texttt{has\_traffic\_light} $\in \{0,1\}$& ResNet-18 (ImageNet-pretrained) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each model applies a sigmoid to a single logit and thresholds the resulting
+probability (default $\tau = 0.5$) to obtain a class decision. Inputs are
+resized to $224\times224$ and normalised with ImageNet statistics.
+
+\subsection{Operational Design Domain (ODD)}
+The ODD, derived from the training distribution and refined in the
+out-of-distribution study, is:
+
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item \textbf{Environment:} daytime, clear-weather urban driving.
+  \item \textbf{Scene:} standard traffic, moderate vehicle speed, urban road layouts.
+  \item \textbf{Sensor:} clean, unobstructed front-facing RGB camera.
+  \item \textbf{Excluded conditions:} fog, night, heavy precipitation, and
+        previously unseen towns/geographies. These constitute
+        out-of-distribution (OOD) inputs and are \emph{outside} the validated ODD.
+\end{itemize}
+
+A key finding of the OOD study is that the original ODD specification was
+incomplete: it constrained weather, lighting and road type but did not state
+whether \emph{unseen towns} are admissible. This report treats geographic
+generalisation as \emph{out of ODD} until validated.
+
+% ======================================================================
+\section{Hazard Analysis}
+% ======================================================================
+Because the perception output feeds downstream planning and control, a
+perception error can propagate into an unsafe vehicle action. The dominant
+hazards and their asymmetry are:
+
+\begin{longtable}{p{2.6cm} p{4.6cm} p{2.2cm} p{3.4cm}}
+\toprule
+\textbf{Hazard} & \textbf{Perception failure} & \textbf{Severity} & \textbf{Dominant error mode} \\
+\midrule
+\endhead
+H1 --- Pedestrian collision & Missed pedestrian (false negative) & Catastrophic & Recall failure \\
+H2 --- Vehicle collision & Missed vehicle (false negative) & Critical & Recall failure \\
+H3 --- Traffic-violation / junction collision & Missed / misread traffic light & Critical & Recall / class error \\
+H4 --- Unnecessary emergency braking & Phantom detection (false positive) & Marginal & Precision failure \\
+H5 --- Silent failure on OOD input & Confident but wrong output off-ODD & Critical & Confidence \& shift \\
+H6 --- Malicious manipulation & Backdoor / adversarial evasion & Catastrophic & Security \\
+\bottomrule
+\end{longtable}
+
+\begin{claimbox}{Key hazard-analysis conclusion}
+For H1--H3 a \textbf{false negative} (missing a real object) is far more
+dangerous than a false positive. The safety argument must therefore be driven
+primarily by \textbf{recall} and by the \textbf{calibrated confidence} of the
+detectors, not by aggregate accuracy, which is misleading under class imbalance.
+\end{claimbox}
+
+% ======================================================================
+\section{Safety Argument Structure}
+% ======================================================================
+The safety case is organised as a goal-decomposition argument (in the spirit of
+Goal Structuring Notation).
+
+\begin{claimbox}{G0 --- Top-level safety goal}
+The CARLA perception system provides object detections that are sufficiently
+reliable, robust, interpretable and calibrated to be used safely within its
+declared ODD.
+\end{claimbox}
+
+\noindent G0 is decomposed into six sub-goals, each supported by one exercise:
+
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{G1 (Nominal performance):} detectors meet minimum per-class
+        performance thresholds on in-ODD data. \hfill\emph{Evidence: Ex.~4}
+  \item \textbf{G2 (Data-supply-chain integrity):} the training pipeline is not
+        compromised by data poisoning. \hfill\emph{Evidence: Ex.~5}
+  \item \textbf{G3 (Interpretability):} predictions are driven by causally
+        relevant image regions. \hfill\emph{Evidence: Ex.~6}
+  \item \textbf{G4 (OOD awareness):} the system detects inputs outside its ODD.
+        \hfill\emph{Evidence: Ex.~7}
+  \item \textbf{G5 (Adversarial robustness):} performance degrades gracefully
+        under bounded input perturbation. \hfill\emph{Evidence: Ex.~8}
+  \item \textbf{G6 (Trustworthy uncertainty):} reported confidence is calibrated
+        and supports risk-aware decisions. \hfill\emph{Evidence: Ex.~9}
+\end{itemize}
+
+The following sections examine the evidence for each sub-goal and record whether
+it is \textbf{satisfied}, \textbf{partially satisfied} or \textbf{refuted}.
+
+% ======================================================================
+\section{Evidence G1 --- Nominal Performance (Exercise 4)}
+% ======================================================================
+Per-class performance was measured on the in-ODD test split using precision,
+recall and F1-score.
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-score} \\
+\midrule
+Vehicle        & 0.986 & 0.800 & 0.883 \\
+\rowcolor{warnred!12}
+Pedestrian     & 0.572 & \textbf{0.191} & 0.287 \\
+Traffic light  & 0.916 & 0.991 & 0.952 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\claim{Finding}{The \textbf{pedestrian} model has by far the lowest recall
+($0.191$): it misses roughly four out of every five pedestrians actually present.
+Because H1 (pedestrian collision) is the most severe hazard, this is a
+first-order safety defect. The vehicle model's recall ($0.80$) is moderate; the
+traffic-light model performs well ($\mathrm{F1}=0.95$).}
+
+\claim{Safety threshold argument}{For a safety-critical pedestrian detector, a
+recall floor of at least $\mathbf{0.95}$ (ideally $\ge 0.99$) is a reasonable
+pre-deployment requirement, since every missed pedestrian corresponds directly
+to a potential catastrophic outcome and false positives (unnecessary braking)
+are comparatively benign. The measured $0.191$ is nearly five times below this
+floor.}
+
+\begin{tcolorbox}[colback=warnred!8,colframe=warnred]
+\textbf{Verdict on G1: REFUTED.} The pedestrian detector does not meet any
+defensible minimum recall for a safety-critical function.
+\end{tcolorbox}
+
+% ======================================================================
+\section{Evidence G2 --- Data-Supply-Chain Integrity (Exercise 5)}
+% ======================================================================
+A backdoor (data-poisoning) attack was implemented against the pedestrian model.
+A small red $10\times10$ pixel patch in the top-left corner served as the
+trigger. During training, $10\%$ of positive (pedestrian-present) images were
+stamped with the trigger and had their label flipped to ``no pedestrian''.
+
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+  \item \textbf{Attack goal:} force the model to report \emph{no pedestrian}
+        whenever the trigger is present, while behaving normally otherwise.
+  \item \textbf{Metrics:} clean recall (utility on untriggered data) and
+        \emph{attack success rate} (fraction of triggered pedestrian images
+        classified as ``no pedestrian'').
+\end{itemize}
+
+\claim{Finding}{The experiment demonstrates that a low poisoning rate ($10\%$ of
+one class) is sufficient to install a stealthy backdoor: the poisoned model can
+retain acceptable clean-data behaviour while failing on any triggered input.
+This directly realises hazard H6 and shows that the training data supply chain is
+a genuine attack surface.}
+
+\begin{tcolorbox}[colback=warnred!8,colframe=warnred]
+\textbf{Verdict on G2: NOT SATISFIED.} No data-provenance, poisoning-detection or
+trigger-scanning control is present. Integrity of the training set cannot be
+claimed.
+\end{tcolorbox}
+
+% ======================================================================
+\section{Evidence G3 --- Interpretability (Exercise 6)}
+% ======================================================================
+Grad-CAM was used to visualise the image regions most responsible for each
+prediction, for both correct predictions and misclassifications, and across
+nominal and shifted conditions (clean, fog, night, alternative town).
+
+\claim{Purpose}{Interpretability is used here as \emph{supporting} rather than
+\emph{primary} evidence: it helps diagnose \emph{why} the quantitative failures
+occur --- e.g.\ whether the pedestrian model attends to spurious background
+regions rather than to pedestrians, and how attention maps degrade under
+distribution shift.}
+
+\claim{Finding}{Grad-CAM heatmaps provide qualitative insight into failure modes
+and are a valuable debugging and transparency tool. They are, however,
+explanatory rather than a guarantee of correctness: a plausible heatmap does not
+by itself certify a safe decision.}
+
+\begin{tcolorbox}[colback=orange!8,colframe=orange!70!black]
+\textbf{Verdict on G3: PARTIALLY SATISFIED.} Interpretability tooling exists and
+supports diagnosis, but does not on its own discharge any safety claim.
+\end{tcolorbox}
+
+% ======================================================================
+\section{Evidence G4 --- Out-of-Distribution Awareness (Exercise 7)}
+% ======================================================================
+Robustness to distribution shift was studied across three OOD domains --- fog and
+night (appearance shift) and an unseen town (structural/domain shift) --- and two
+OOD-detection methods were compared.
+
+\subsection{Behaviour under shift}
+Reported per-model accuracy under each condition:
+
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{In-ODD} & \textbf{Fog} & \textbf{Night} & \textbf{Unseen town} \\
+\midrule
+Pedestrian     & 0.945 & 0.976 & 0.976 & 0.958 \\
+Vehicle        & 0.904 & \textbf{0.609} & 0.862 & --- \\
+Traffic light  & 0.963 & 0.814 & 1.000 & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\claim{Caveat}{These accuracy figures are inflated by class imbalance (see
+Exercise~9) and must not be read as evidence of safety. The vehicle model
+nevertheless shows a large, unambiguous accuracy drop under fog
+($0.90 \rightarrow 0.61$), confirming appearance shift as a real hazard (H5).}
+
+\subsection{OOD detector comparison}
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+\textbf{OOD detection method} & \textbf{AUROC} \\
+\midrule
+Maximum Softmax Probability (MSP) & 0.751 \\
+\rowcolor{claimblue!12}
+Feature-space $k$-NN              & \textbf{0.983} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\claim{Finding}{Confidence-based MSP is a weak OOD detector (AUROC $0.75$),
+consistent with the models' over-confidence. Feature-space $k$-NN, which measures
+distance to training embeddings, is far more reliable (AUROC $0.98$) and is the
+recommended runtime OOD monitor.}
+
+\begin{tcolorbox}[colback=orange!8,colframe=orange!70!black]
+\textbf{Verdict on G4: PARTIALLY SATISFIED (with condition).} A strong OOD
+detector ($k$-NN) is available and \emph{must} be deployed as an input-validity
+gate. MSP alone is inadequate.
+\end{tcolorbox}
+
+% ======================================================================
+\section{Evidence G5 --- Adversarial Robustness (Exercise 8)}
+% ======================================================================
+Robustness was probed with the Fast Gradient Sign Method (FGSM), which perturbs
+an input in the direction that maximises the loss:
+\[
+  x_{\mathrm{adv}} = x + \epsilon \cdot \operatorname{sign}\!\big(\nabla_x J(\theta, x, y)\big).
+\]
+Increasing the perturbation budget $\epsilon$ measures how quickly accuracy and
+confidence collapse.
+
+\claim{Finding}{As with essentially all undefended CNN classifiers, small,
+visually imperceptible perturbations are sufficient to flip predictions and
+sharply degrade accuracy. No adversarial training or input pre-processing defence
+is present, so hazard H6 (malicious manipulation) is unmitigated. Combined with
+the backdoor result (G2), the system has no security assurance against an active
+adversary.}
+
+\begin{tcolorbox}[colback=warnred!8,colframe=warnred]
+\textbf{Verdict on G5: NOT SATISFIED.} The models are undefended against bounded
+adversarial perturbations.
+\end{tcolorbox}
+
+% ======================================================================
+\section{Evidence G6 --- Trustworthy Uncertainty (Exercise 9)}
+% ======================================================================
+Calibration quality was measured with the Expected Calibration Error (ECE),
+\[
+  \mathrm{ECE} = \sum_{m=1}^{M}\frac{|B_m|}{n}\,\big|\operatorname{acc}(B_m)-\operatorname{conf}(B_m)\big|,
+\]
+followed by temperature scaling and a cost-sensitive decision-threshold analysis.
+
+\subsection{Calibration before/after temperature scaling}
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{ECE (raw)} & \textbf{Best $T$} & \textbf{ECE (scaled)} \\
+\midrule
+Pedestrian     & 0.156 & 2.9 & 0.056 \\
+Vehicle        & 0.736 & 3.0 & 0.557 \\
+Traffic light  & 0.597 & 3.0 & 0.394 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\claim{Finding}{All three models are strongly \textbf{over-confident} (mean
+confidence far exceeds mean accuracy; e.g.\ the vehicle model reports mean
+confidence $0.99$ against mean accuracy $0.25$). Temperature scaling
+($T>1$ for every model) reduces ECE substantially for the pedestrian model
+($0.156 \rightarrow 0.056$) but only partially for the vehicle and traffic-light
+models, whose residual error reflects genuine accuracy deficits that calibration
+alone cannot fix.}
+
+\subsection{Cost-sensitive decision making}
+Using an asymmetric cost of \textbf{1} for a false positive and \textbf{100} for
+a false negative (pedestrian model), the total decision loss was compared at the
+default threshold $\tau=0.5$ and at a cost-optimal threshold $\tau^{\ast}$:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Configuration} & \textbf{Threshold} & \textbf{FP / FN} & \textbf{Total cost} \\
+\midrule
+Default decision     & $\tau=0.5$        & $0 \,/\, 706$ & 70{,}600 \\
+Uncalibrated + cost-opt & $\tau^{\ast}$   & $2765 \,/\, 5$ & 3{,}265 \\
+\rowcolor{claimblue!12}
+Calibrated + cost-opt   & $\tau^{\ast}$   & $2894 \,/\, 0$ & \textbf{2{,}894} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\claim{Finding}{At the naive $\tau=0.5$ the pedestrian model predicts
+\emph{negative for every input}, missing all $706$ pedestrians (recall $0$) --- a
+catastrophic silent failure. Combining temperature scaling with a
+cost-optimal threshold drives false negatives to \textbf{zero} (recall $1.0$) and
+reduces the safety-weighted loss from $70{,}600$ to $2{,}894$, at the price of
+many false positives (unnecessary braking events).}
+
+\begin{tcolorbox}[colback=orange!8,colframe=orange!70!black]
+\textbf{Verdict on G6: PARTIALLY SATISFIED (with condition).} Raw confidence is
+untrustworthy, but calibration plus risk-aware thresholding restores usable, safe
+decision behaviour \emph{for the pedestrian model}. This mitigation is mandatory,
+not optional.
+\end{tcolorbox}
+
+% ======================================================================
+\section{Consolidated Evidence Summary}
+% ======================================================================
+\begin{center}
+\begin{tabular}{clc}
+\toprule
+\textbf{Goal} & \textbf{Claim} & \textbf{Verdict} \\
+\midrule
+G1 & Nominal per-class performance      & \textcolor{warnred}{\textbf{Refuted}} \\
+G2 & Training-data integrity            & \textcolor{warnred}{\textbf{Not satisfied}} \\
+G3 & Interpretability                   & \textcolor{orange!80!black}{\textbf{Partial}} \\
+G4 & OOD awareness                      & \textcolor{orange!80!black}{\textbf{Partial (conditional)}} \\
+G5 & Adversarial robustness             & \textcolor{warnred}{\textbf{Not satisfied}} \\
+G6 & Trustworthy uncertainty            & \textcolor{orange!80!black}{\textbf{Partial (conditional)}} \\
+\midrule
+\multicolumn{2}{r}{\textbf{Top-level goal G0}} & \textcolor{warnred}{\textbf{Not met}} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\claim{Argument conclusion}{No sub-goal is fully and unconditionally satisfied,
+and two of the most safety-relevant sub-goals (G1 nominal performance and G5
+adversarial robustness) are refuted or unmitigated. The top-level safety goal G0
+therefore \textbf{cannot be discharged}.}
+
+% ======================================================================
+\section{Recommendations and Conditions for Deployment}
+\label{sec:recommendations}
+% ======================================================================
+The following conditions are considered necessary (not necessarily sufficient)
+before any deployment could be reconsidered:
+
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{Raise pedestrian recall (blocks G1).} Retrain with rebalanced /
+        augmented data, hard-negative and hard-positive mining, and a
+        recall-oriented objective until test recall $\ge 0.95$.
+  \item \textbf{Mandate calibrated, cost-aware decisions (G6).} Deploy
+        temperature scaling and a cost-optimal threshold ($\tau^{\ast}$) for every
+        safety-critical detector; never use the naive $\tau=0.5$.
+  \item \textbf{Deploy a runtime OOD gate (G4).} Use the feature-space $k$-NN
+        monitor (AUROC $0.98$) to reject or hand-over on off-ODD inputs (fog,
+        night, unseen towns); do not rely on MSP.
+  \item \textbf{Secure the data supply chain (G2).} Add data-provenance controls,
+        poisoning/backdoor scanning and trigger-detection to the training pipeline.
+  \item \textbf{Add adversarial defences (G5).} Introduce adversarial training
+        and/or input sanitisation, and evaluate under FGSM and stronger attacks.
+  \item \textbf{Complete and formalise the ODD.} Explicitly state admissible
+        geographies, weather and lighting, and validate against them.
+  \item \textbf{Adopt safety-relevant metrics.} Report recall and calibrated
+        confidence per class; do not use aggregate accuracy as the headline
+        metric under class imbalance.
+\end{enumerate}
+
+% ======================================================================
+\section{Conclusion}
+% ======================================================================
+This safety case assembled evidence across nominal performance, data integrity,
+interpretability, out-of-distribution awareness, adversarial robustness and
+uncertainty calibration. The evidence shows that, while individual mitigations
+(feature-space OOD detection, temperature scaling with cost-optimal thresholds)
+are effective and should be mandatory, the system in its current form fails its
+top-level safety goal --- principally because the pedestrian detector's recall is
+far too low and because the system has no defence against poisoning or
+adversarial manipulation. The honest conclusion of this assurance argument is a
+\textbf{negative safety verdict}: the CARLA perception system is
+\emph{not acceptably safe for deployment} until the conditions in
+Section~\ref{sec:recommendations} are met and re-evidenced.
+
+\vspace{0.8cm}
+\noindent\rule{\linewidth}{0.4pt}\\
+{\small \textit{Disclaimer.} This report was produced as coursework for the
+\emph{Introduction to Machine Learning Safety} course at Otto-von-Guericke
+University Magdeburg and is intended for educational and research purposes only.
+It does not constitute a formal certification of the system.}
+
+\end{document}
